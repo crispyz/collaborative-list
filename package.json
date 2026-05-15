@@ -1,0 +1,21 @@
+{
+  "name": "collaborative-list",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run --workspaces --if-present typecheck",
+    "db:generate": "npm run -w @collab/db generate",
+    "db:migrate": "npm run -w @collab/db migrate",
+    "db:studio": "npm run -w @collab/db studio"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

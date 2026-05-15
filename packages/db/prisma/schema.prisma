@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model List {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  ownerToken String   @db.Text
+  isFrozen   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  todos TodoItem[]
+}
+
+model TodoItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  listId     String   @db.Uuid
+  parentId   String?  @db.Uuid
+  position   Float
+  title      String
+  isDone     Boolean  @default(false)
+  priceCents Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  list     List       @relation(fields: [listId], references: [id], onDelete: Cascade)
+  parent   TodoItem?  @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  children TodoItem[] @relation("Subtasks")
+
+  @@index([listId, position])
+  @@index([parentId])
+}
