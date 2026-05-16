@@ -7,7 +7,13 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "npm run -w @collab/api dev",
+    "build": "npm run -w @collab/api build",
+    "start": "npm run -w @collab/api start",
     "typecheck": "npm run --workspaces --if-present typecheck",
+    "test:api": "bash apps/api/scripts/smoke-test.sh",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
     "db:generate": "npm run -w @collab/db generate",
     "db:migrate": "npm run -w @collab/db migrate",
     "db:studio": "npm run -w @collab/db studio"

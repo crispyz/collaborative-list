@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-const uuid = z.string().uuid();
-const isoDate = z.string().datetime();
+const uuid = z.uuid();
+const isoDate = z.iso.datetime();
 const trimmedTitle = z.string().trim().min(1).max(500);
 const trimmedListName = z.string().trim().min(1).max(200);
 const priceCents = z.number().int().nonnegative().nullable();
@@ -69,7 +69,8 @@ export type RealtimeEvent =
   | { type: "todo.deleted"; listId: string; itemId: string }
   | { type: "todo.reordered"; listId: string; items: TodoItem[] }
   | { type: "list.frozen"; listId: string }
-  | { type: "list.unfrozen"; listId: string };
+  | { type: "list.unfrozen"; listId: string }
+  | { type: "list.deleted"; listId: string };
 
 export type ClientMessage =
   | { type: "subscribe"; listId: string }
