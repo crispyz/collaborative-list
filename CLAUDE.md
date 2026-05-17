@@ -93,7 +93,7 @@ git commit -m "Fix bug"
 
 ## Project Context
 
-This is the **technical home task**: a collaborative real-time to-do list application. The full requirements and decisions live in `task-scope.md` — read it before making architectural choices. The goal is a **polished, stable, product-like submission** demonstrating full-stack capability, not a superficial implementation of every possible feature.
+This is the **technical home task**: a collaborative real-time to-do list application. The goal is a **polished, stable, product-like submission** demonstrating full-stack capability, not a superficial implementation of every possible feature.
 
 ### Required Stack (non-negotiable)
 
@@ -155,7 +155,7 @@ Do not implement these without explicit user direction — they were deliberatel
 
 ### Real-Time Event Shape
 
-Reference contract for WebSocket events (from `task-scope.md`):
+Reference contract for WebSocket events:
 
 ```ts
 type RealtimeEvent =
@@ -182,9 +182,9 @@ type RealtimeEvent =
 - **Prisma access stays in `apps/api` services.** No Prisma imports from `apps/web` or shared packages. The frontend talks HTTP/WebSocket, never the DB.
 - **No new dependencies unless they clearly reduce complexity.** Prefer the standard library and what's already installed. If a dep is added, justify it in the commit message.
 - **Always use the latest stable version of every dependency.** Do not pin a version remembered from training data — it will be months or years out of date. Before adding or bumping a package, check the current latest with `npm view <pkg> version` (or the package's official docs/changelog). Outdated pins create silent technical debt, miss security/perf fixes, and diverge from documented APIs. "Latest stable" means the latest non-prerelease tag; do not pin betas or RCs without a reason.
-- **PostgreSQL is the single source of truth.** Real-time events are *notifications* that state changed — never the canonical state. Clients reconcile by refetching or by applying events to a server-confirmed baseline; they must tolerate missed/duplicate events.
+- **PostgreSQL is the single source of truth.** Real-time events are _notifications_ that state changed — never the canonical state. Clients reconcile by refetching or by applying events to a server-confirmed baseline; they must tolerate missed/duplicate events.
 - **Mutation → persist → broadcast.** Every state-changing API handler must (1) write to PostgreSQL, (2) only then emit the corresponding WebSocket event to the list's room. Never broadcast before the DB commit.
-- **Freeze enforcement is server-side.** Every mutation handler checks `list.frozen` and `ownerToken` and rejects on mismatch. The UI may *also* disable controls when frozen, but the UI is not the gate — a bypassed client must not be able to mutate a frozen list.
+- **Freeze enforcement is server-side.** Every mutation handler checks `list.frozen` and `ownerToken` and rejects on mismatch. The UI may _also_ disable controls when frozen, but the UI is not the gate — a bypassed client must not be able to mutate a frozen list.
 
 ### Submission Requirements
 

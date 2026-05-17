@@ -1,5 +1,9 @@
 .claude/
 
+# Internal planning/progress docs — agent + author only, not committed
+task-scope.md
+PROGRESS.md
+
 node_modules
 dist
 .next
@@ -17,3 +21,4 @@ dist
 .idea
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json

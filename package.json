@@ -7,10 +7,16 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run -w @collab/api dev",
-    "build": "npm run -w @collab/api build",
-    "start": "npm run -w @collab/api start",
+    "dev": "concurrently -n api,web -c blue,green \"npm run api:dev\" \"npm run web:dev\"",
+    "api:dev": "npm run -w @collab/api dev",
+    "api:build": "npm run -w @collab/api build",
+    "api:start": "npm run -w @collab/api start",
+    "web:dev": "npm run -w @collab/web dev",
+    "web:build": "npm run -w @collab/web build",
+    "web:start": "npm run -w @collab/web start",
     "typecheck": "npm run --workspaces --if-present typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test:api": "bash apps/api/scripts/smoke-test.sh",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
@@ -19,6 +25,8 @@
     "db:studio": "npm run -w @collab/db studio"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.8.3",
     "typescript": "^6.0.3"
   },
   "engines": {

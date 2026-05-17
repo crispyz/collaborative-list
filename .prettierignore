@@ -1,0 +1,12 @@
+node_modules
+dist
+.next
+.turbo
+*.tsbuildinfo
+package-lock.json
+**/prisma/migrations
+**/.prisma
+
+# Local-only planning docs
+task-scope.md
+PROGRESS.md

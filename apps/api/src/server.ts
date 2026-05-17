@@ -18,7 +18,11 @@ export function buildServer(): FastifyInstance {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
-  app.register(cors, { origin: true });
+  app.register(cors, {
+    origin: true,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['content-type', 'x-owner-token'],
+  });
 
   registerErrorHandler(app);
 

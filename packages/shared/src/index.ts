@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 const uuid = z.uuid();
 const isoDate = z.iso.datetime();
@@ -64,14 +64,14 @@ export const OwnerAuthSchema = z.object({
 export type OwnerAuth = z.infer<typeof OwnerAuthSchema>;
 
 export type RealtimeEvent =
-  | { type: "todo.created"; listId: string; item: TodoItem }
-  | { type: "todo.updated"; listId: string; item: TodoItem }
-  | { type: "todo.deleted"; listId: string; itemId: string }
-  | { type: "todo.reordered"; listId: string; items: TodoItem[] }
-  | { type: "list.frozen"; listId: string }
-  | { type: "list.unfrozen"; listId: string }
-  | { type: "list.deleted"; listId: string };
+  | { type: 'todo.created'; listId: string; item: TodoItem }
+  | { type: 'todo.updated'; listId: string; item: TodoItem }
+  | { type: 'todo.deleted'; listId: string; itemId: string }
+  | { type: 'todo.reordered'; listId: string; items: TodoItem[] }
+  | { type: 'list.frozen'; listId: string }
+  | { type: 'list.unfrozen'; listId: string }
+  | { type: 'list.deleted'; listId: string };
 
 export type ClientMessage =
-  | { type: "subscribe"; listId: string }
-  | { type: "unsubscribe"; listId: string };
+  | { type: 'subscribe'; listId: string }
+  | { type: 'unsubscribe'; listId: string };
