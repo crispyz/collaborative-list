@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { HttpError } from '../lib/errors.js';
 import { assertCanMutate } from '../lib/freeze-guard.js';
 import { serializeTodoItem } from '../lib/serialize.js';
+import { broadcast } from '../realtime/rooms.js';
 
 const ListIdParams = z.object({ listId: z.uuid() });
 const TodoParams = z.object({
@@ -46,8 +47,10 @@ export const todosRoutes: FastifyPluginAsyncZod = async (app) => {
           position,
         },
       });
+      const item = serializeTodoItem(created);
+      broadcast(list.id, { type: 'todo.created', listId: list.id, item });
       reply.status(201);
-      return serializeTodoItem(created);
+      return item;
     },
   );
 
@@ -80,7 +83,9 @@ export const todosRoutes: FastifyPluginAsyncZod = async (app) => {
           ...(req.body.position !== undefined && { position: req.body.position }),
         },
       });
-      return serializeTodoItem(updated);
+      const item = serializeTodoItem(updated);
+      broadcast(list.id, { type: 'todo.updated', listId: list.id, item });
+      return item;
     },
   );
 
@@ -103,6 +108,7 @@ export const todosRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       await prisma.todoItem.delete({ where: { id: existing.id } });
+      broadcast(list.id, { type: 'todo.deleted', listId: list.id, itemId: existing.id });
       return reply.status(204).send();
     },
   );

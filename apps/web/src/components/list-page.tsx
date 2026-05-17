@@ -3,11 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import type { CreateTodoInput } from '@collab/shared';
 import { ApiError, api, type ListWithTodos } from '@/lib/api';
-import { getOwnerToken } from '@/lib/owner-tokens';
+import { getOwnerToken, removeOwnerToken } from '@/lib/owner-tokens';
+import { useListSubscription } from '@/lib/realtime';
 import { FilterTabs, type FilterValue } from '@/components/filter-tabs';
 import { TodoRow } from '@/components/todo-item';
 import { TotalCost } from '@/components/total-cost';
@@ -24,6 +25,7 @@ interface Props {
 
 export function ListPage({ id }: Props) {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const filterParam = searchParams.get('filter');
   const filter: FilterValue =
@@ -35,6 +37,13 @@ export function ListPage({ id }: Props) {
   useEffect(() => {
     setOwnerToken(getOwnerToken(id));
   }, [id]);
+
+  useListSubscription(id, {
+    onListDeleted: () => {
+      removeOwnerToken(id);
+      router.replace('/');
+    },
+  });
 
   const listQuery = useQuery({
     queryKey: ['list', id],
@@ -95,7 +104,7 @@ export function ListPage({ id }: Props) {
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        All lists
+        My lists
       </Link>
       <header className="mb-6">
         <div className="flex items-center justify-between gap-3">

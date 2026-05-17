@@ -5,6 +5,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { HttpError } from '../lib/errors.js';
 import { serializeList, serializeTodoItem } from '../lib/serialize.js';
+import { broadcast } from '../realtime/rooms.js';
 
 const ListIdParams = z.object({ id: z.uuid() });
 
@@ -77,6 +78,7 @@ export const listsRoutes: FastifyPluginAsyncZod = async (app) => {
         throw new HttpError(403, 'INVALID_OWNER_TOKEN', 'Invalid owner token');
       }
       await prisma.list.delete({ where: { id: list.id } });
+      broadcast(list.id, { type: 'list.deleted', listId: list.id });
       return reply.status(204).send();
     },
   );
@@ -89,5 +91,6 @@ async function setFrozen(id: string, ownerToken: string, isFrozen: boolean) {
     throw new HttpError(403, 'INVALID_OWNER_TOKEN', 'Invalid owner token');
   }
   const updated = await prisma.list.update({ where: { id }, data: { isFrozen } });
+  broadcast(id, { type: isFrozen ? 'list.frozen' : 'list.unfrozen', listId: id });
   return serializeList(updated);
 }

@@ -18,6 +18,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:api": "bash apps/api/scripts/smoke-test.sh",
+    "test:ws": "tsx apps/api/scripts/ws-smoke.ts",
+    "test": "npm run test:api && npm run test:ws",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:generate": "npm run -w @collab/db generate",
