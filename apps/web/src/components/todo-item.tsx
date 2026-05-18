@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import type { TodoItem as Todo, UpdateTodoInput } from '@collab/shared';
 import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { formatCents, parseDollars } from '@/lib/money';
@@ -43,9 +44,7 @@ export function TodoRow({ todo, listId, ownerToken, canEdit }: Props) {
     },
     onError: (err, _input, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(['list', listId], ctx.previous);
-      if (err instanceof ApiError && err.code === 'LIST_FROZEN') {
-        console.warn('List is frozen — your edit was rejected.');
-      }
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update todo.');
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['list', listId] }),
   });
@@ -60,8 +59,9 @@ export function TodoRow({ todo, listId, ownerToken, canEdit }: Props) {
       );
       return { previous };
     },
-    onError: (_err, _input, ctx) => {
+    onError: (err, _input, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(['list', listId], ctx.previous);
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete todo.');
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['list', listId] }),
   });

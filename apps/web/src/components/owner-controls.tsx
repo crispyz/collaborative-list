@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { toast } from 'sonner';
 import type { List } from '@collab/shared';
 import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { removeOwnerToken } from '@/lib/owner-tokens';
@@ -27,7 +27,6 @@ interface Props {
 export function OwnerControls({ list, ownerToken }: Props) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
 
   const toggleFrozen = useMutation({
     mutationFn: () =>
@@ -42,7 +41,7 @@ export function OwnerControls({ list, ownerToken }: Props) {
     },
     onError: (err, _input, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(['list', list.id], ctx.previous);
-      setError(err instanceof ApiError ? err.message : 'Failed to update freeze state.');
+      toast.error(err instanceof ApiError ? err.message : 'Failed to update freeze state.');
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['list', list.id] }),
   });
@@ -55,7 +54,7 @@ export function OwnerControls({ list, ownerToken }: Props) {
       router.push('/');
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : 'Failed to delete list.');
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete list.');
     },
   });
 
@@ -76,10 +75,7 @@ export function OwnerControls({ list, ownerToken }: Props) {
         <Button
           variant={list.isFrozen ? 'outline' : 'default'}
           size="sm"
-          onClick={() => {
-            setError(null);
-            toggleFrozen.mutate();
-          }}
+          onClick={() => toggleFrozen.mutate()}
           disabled={toggleFrozen.isPending}
         >
           {list.isFrozen ? 'Unfreeze list' : 'Freeze list'}
@@ -114,7 +110,6 @@ export function OwnerControls({ list, ownerToken }: Props) {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-      {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
     </section>
   );
 }

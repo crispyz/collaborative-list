@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import type { CreateTodoInput } from '@collab/shared';
 import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { getOwnerToken, removeOwnerToken } from '@/lib/owner-tokens';
@@ -55,12 +56,17 @@ export function ListPage({ id }: Props) {
   const createTodo = useMutation({
     mutationFn: (input: CreateTodoInput) => api.createTodo(id, input, ownerToken),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['list', id] }),
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to create todo.');
+    },
   });
 
-  function handleAddTodo(e: FormEvent) {
-    e.preventDefault();
+  function addTodoAction() {
     const title = newTitle.trim();
-    if (!title) return;
+    if (!title) {
+      toast.error('Title is required.');
+      return;
+    }
     createTodo.mutate({ title });
     setNewTitle('');
   }
@@ -138,7 +144,7 @@ export function ListPage({ id }: Props) {
         </div>
       )}
 
-      <form onSubmit={handleAddTodo} className="mb-6 flex gap-2">
+      <form action={addTodoAction} className="mb-6 flex gap-2">
         <Input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}

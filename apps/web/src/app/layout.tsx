@@ -8,8 +8,9 @@ import { cn } from '@/lib/utils';
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: 'Collaborative List',
-  description: 'A real-time collaborative to-do list',
+  title: 'Collaborative List — share to-dos in real time',
+  description:
+    'Create a to-do list, share its URL, and collaborate live with anyone — no account required.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

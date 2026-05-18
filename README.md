@@ -4,14 +4,14 @@ A real-time collaborative to-do list. Multiple users open the same list URL in d
 
 ## Stack
 
-- **Backend:** Node.js + TypeScript + Fastify + Prisma + PostgreSQL (+ WebSockets in Phase 4)
+- **Backend:** Node.js + TypeScript + Fastify + Prisma + PostgreSQL + WebSockets (`@fastify/websocket`)
 - **Frontend:** Next.js (App Router) + React 19 + TypeScript + TanStack Query + Tailwind v4 + shadcn/ui
 - **Shared:** Zod schemas → inferred TypeScript types (single source of truth for request shapes and `RealtimeEvent`)
 - **Monorepo:** npm workspaces
 
 ```
 apps/
-  api/     Fastify HTTP server (+ WebSocket in Phase 4)
+  api/     Fastify HTTP + WebSocket server
   web/     Next.js frontend
 packages/
   db/      Prisma schema + client singleton (driver adapter)
@@ -74,33 +74,50 @@ npm run dev
 
 ### Quality
 
-| Command                | Does                                                                    |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `npm run typecheck`    | `tsc --noEmit` across every workspace, strict mode                      |
-| `npm run format`       | Prettier writes formatted output across the repo                        |
-| `npm run format:check` | Prettier in check mode (non-zero on drift; CI-friendly)                 |
-| `npm run test:api`     | Smoke test: 41 happy- and error-path assertions against every API route |
+| Command                | Does                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `npm run typecheck`    | `tsc --noEmit` across every workspace, strict mode                           |
+| `npm run format`       | Prettier writes formatted output across the repo                             |
+| `npm run format:check` | Prettier in check mode (non-zero on drift; CI-friendly)                      |
+| `npm run test:api`     | HTTP smoke test: 41 happy- and error-path assertions against every API route |
+| `npm run test:ws`      | WebSocket smoke test: 9 assertions, one per `RealtimeEvent` type             |
+| `npm run test`         | Runs both smoke tests sequentially                                           |
+
+## Deploy to Render
+
+This repo ships with [`render.yaml`](./render.yaml) so the whole stack can be deployed via Render's Blueprint feature.
+
+1. Push the repo to GitHub (private is fine).
+2. Render dashboard → **New** → **Blueprint** → connect this repo → Render reads `render.yaml`.
+3. Click **Apply**. Render provisions one Postgres database + two web services (`collab-list-api` and `collab-list-web`).
+4. First build takes ~5 minutes — Prisma generates the client and applies the initial migration as part of the API service's build step.
+5. Visit `https://collab-list-web.onrender.com`. First request after idle takes ~30–50s (Render's free tier sleeps after 15 minutes — known caveat).
+
+Caveats on the free tier:
+
+- Web services sleep after 15 min inactivity → cold start on the next request.
+- Free Postgres is deleted after 90 days; upgrade or recreate before then.
+
+If you fork into a different Render account, update `NEXT_PUBLIC_API_URL` in `render.yaml` to match the API service's hostname (Render uses `<service-name>.onrender.com`).
 
 ## Implemented stories
 
-_To be listed when shipped._
-
-**Primary:**
+**Primary scope:**
 
 1. Create to-do items
 2. Multiple lists with unique shareable URLs
-3. Real-time collaboration between users (Phase 4)
-4. PostgreSQL persistence
+3. Real-time collaboration between users (WebSocket; sub-100ms propagation)
+4. PostgreSQL persistence (Prisma 7, driver adapter)
 5. Mark items as done
-6. Filter active / done / all
-7. Freeze / unfreeze list by owner (Phase 5 wires the UI; backend enforces today)
+6. Filter active / done / all (URL search param)
+7. Freeze / unfreeze list by owner (server-side enforced; owner bypasses, non-owners blocked + UI disabled)
 8. Price/cost per task (stored as integer cents)
-9. Aggregate total cost per list
+9. Aggregate total cost per list (recomputes live; separates `Visible` vs `All` when filtered)
 
-**Bonus (only after primary is stable):**
+**Not implemented (deferred):**
 
-- Drag & drop ordering
-- Subtasks (one level)
+- Drag & drop ordering — `position: Float` field exists in the schema, ready for `dnd-kit` integration
+- Subtasks — `parentId` self-reference + cascade delete already in place; UI not wired yet
 - Subtask price aggregation in parent
 
 ## Intentionally out of scope

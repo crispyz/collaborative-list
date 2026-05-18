@@ -1,0 +1,45 @@
+# Render blueprint — deploy API + Web + Postgres in one shot.
+# Dashboard → New → Blueprint → connect this repo → Render reads this file.
+#
+# Notes:
+# - Free Postgres expires 90 days after creation; upgrade or recreate before then.
+# - Free web services sleep after 15 min of inactivity → first request after sleep
+#   cold-starts in ~30-50s.
+# - `NEXT_PUBLIC_API_URL` is baked into the web bundle at build time. The value here
+#   must match the API service's hostname; Render uses `<service-name>.onrender.com`.
+
+databases:
+  - name: collab-list-db
+    plan: free
+    databaseName: collaborative_list
+    user: collab
+
+services:
+  - type: web
+    name: collab-list-api
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install --include=dev && npm run -w @collab/db generate && npm run -w @collab/db migrate:deploy
+    startCommand: npm run -w @collab/api start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: collab-list-db
+          property: connectionString
+
+  - type: web
+    name: collab-list-web
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install --include=dev && npm run -w @collab/web build
+    startCommand: npm run -w @collab/web start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://collab-list-api.onrender.com
