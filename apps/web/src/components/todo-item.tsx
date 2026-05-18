@@ -13,13 +13,14 @@ interface Props {
   todo: Todo;
   listId: string;
   ownerToken: string | undefined;
+  canEdit: boolean;
 }
 
 function priceToInput(cents: number | null): string {
   return cents == null ? '' : (cents / 100).toFixed(2);
 }
 
-export function TodoRow({ todo, listId, ownerToken }: Props) {
+export function TodoRow({ todo, listId, ownerToken, canEdit }: Props) {
   const queryClient = useQueryClient();
   const [editingField, setEditingField] = useState<'title' | 'price' | null>(null);
   const [titleDraft, setTitleDraft] = useState(todo.title);
@@ -101,11 +102,12 @@ export function TodoRow({ todo, listId, ownerToken }: Props) {
         type="checkbox"
         checked={todo.isDone}
         onChange={(e) => update.mutate({ isDone: e.target.checked })}
-        className="size-4 cursor-pointer"
+        disabled={!canEdit}
+        className="size-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
         aria-label={`Mark "${todo.title}" as ${todo.isDone ? 'not done' : 'done'}`}
       />
 
-      {editingField === 'title' ? (
+      {editingField === 'title' && canEdit ? (
         <Input
           autoFocus
           value={titleDraft}
@@ -121,7 +123,7 @@ export function TodoRow({ todo, listId, ownerToken }: Props) {
           maxLength={500}
           className="flex-1"
         />
-      ) : (
+      ) : canEdit ? (
         <button
           type="button"
           onClick={() => {
@@ -136,9 +138,17 @@ export function TodoRow({ todo, listId, ownerToken }: Props) {
           <span className="truncate">{todo.title}</span>
           <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-60" />
         </button>
+      ) : (
+        <span
+          className={`flex-1 truncate text-sm ${
+            todo.isDone ? 'text-muted-foreground line-through' : ''
+          }`}
+        >
+          {todo.title}
+        </span>
       )}
 
-      {editingField === 'price' ? (
+      {editingField === 'price' && canEdit ? (
         <Input
           autoFocus
           value={priceDraft}
@@ -155,7 +165,7 @@ export function TodoRow({ todo, listId, ownerToken }: Props) {
           placeholder="0.00"
           className="w-24"
         />
-      ) : (
+      ) : canEdit ? (
         <button
           type="button"
           onClick={() => {
@@ -176,19 +186,29 @@ export function TodoRow({ todo, listId, ownerToken }: Props) {
           )}
           <Pencil className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-60" />
         </button>
+      ) : (
+        <span className="w-28 text-right text-sm text-muted-foreground">
+          {todo.priceCents == null ? (
+            <span className="italic">—</span>
+          ) : (
+            <span className="tabular-nums">{formatCents(todo.priceCents)}</span>
+          )}
+        </span>
       )}
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={() => remove.mutate()}
-        disabled={remove.isPending}
-        aria-label={`Delete "${todo.title}"`}
-        className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-      >
-        <Trash2 className="size-4" />
-      </Button>
+      {canEdit && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => remove.mutate()}
+          disabled={remove.isPending}
+          aria-label={`Delete "${todo.title}"`}
+          className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      )}
     </li>
   );
 }

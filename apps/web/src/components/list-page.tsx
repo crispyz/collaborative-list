@@ -10,6 +10,7 @@ import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { getOwnerToken, removeOwnerToken } from '@/lib/owner-tokens';
 import { useListSubscription } from '@/lib/realtime';
 import { FilterTabs, type FilterValue } from '@/components/filter-tabs';
+import { OwnerControls } from '@/components/owner-controls';
 import { TodoRow } from '@/components/todo-item';
 import { TotalCost } from '@/components/total-cost';
 import { Badge } from '@/components/ui/badge';
@@ -92,6 +93,8 @@ export function ListPage({ id }: Props) {
   }
 
   const data: ListWithTodos = listQuery.data;
+  const isOwner = !!ownerToken;
+  const canEdit = isOwner || !data.list.isFrozen;
   const visible = data.todos.filter((t) => {
     if (filter === 'all') return true;
     return filter === 'active' ? !t.isDone : t.isDone;
@@ -127,15 +130,23 @@ export function ListPage({ id }: Props) {
         </p>
       </header>
 
+      {isOwner && ownerToken && <OwnerControls list={data.list} ownerToken={ownerToken} />}
+
+      {!isOwner && data.list.isFrozen && (
+        <div className="mb-6 rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+          This list is frozen by the owner. You can view but not edit until it's unfrozen.
+        </div>
+      )}
+
       <form onSubmit={handleAddTodo} className="mb-6 flex gap-2">
         <Input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="What needs doing?"
+          placeholder={canEdit ? 'What needs doing?' : 'Editing disabled'}
           maxLength={500}
-          disabled={createTodo.isPending}
+          disabled={createTodo.isPending || !canEdit}
         />
-        <Button type="submit" disabled={createTodo.isPending || !newTitle.trim()}>
+        <Button type="submit" disabled={createTodo.isPending || !newTitle.trim() || !canEdit}>
           Add
         </Button>
       </form>
@@ -147,7 +158,7 @@ export function ListPage({ id }: Props) {
 
       <ul className="flex flex-col gap-2">
         {visible.map((t) => (
-          <TodoRow key={t.id} todo={t} listId={id} ownerToken={ownerToken} />
+          <TodoRow key={t.id} todo={t} listId={id} ownerToken={ownerToken} canEdit={canEdit} />
         ))}
         {visible.length === 0 && (
           <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
