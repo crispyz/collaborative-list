@@ -90,4 +90,11 @@ export const api = {
       method: 'DELETE',
       ownerToken,
     }),
+
+  reorderTodos: (listId: string, items: { id: string; position: number }[], ownerToken?: string) =>
+    apiFetch<{ items: TodoItem[] }>(`/lists/${listId}/todos/reorder`, {
+      method: 'POST',
+      body: { items },
+      ownerToken,
+    }),
 };

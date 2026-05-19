@@ -1,7 +1,9 @@
 'use client';
 
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Trash2 } from 'lucide-react';
+import { GripVertical, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { TodoItem as Todo, UpdateTodoInput } from '@collab/shared';
@@ -15,17 +17,28 @@ interface Props {
   listId: string;
   ownerToken: string | undefined;
   canEdit: boolean;
+  canDrag: boolean;
 }
 
 function priceToInput(cents: number | null): string {
   return cents == null ? '' : (cents / 100).toFixed(2);
 }
 
-export function TodoRow({ todo, listId, ownerToken, canEdit }: Props) {
+export function TodoRow({ todo, listId, ownerToken, canEdit, canDrag }: Props) {
   const queryClient = useQueryClient();
   const [editingField, setEditingField] = useState<'title' | 'price' | null>(null);
   const [titleDraft, setTitleDraft] = useState(todo.title);
   const [priceDraft, setPriceDraft] = useState(priceToInput(todo.priceCents));
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: todo.id,
+    disabled: !canDrag,
+  });
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
 
   const update = useMutation({
     mutationFn: (input: UpdateTodoInput) => api.patchTodo(listId, todo.id, input, ownerToken),
@@ -97,7 +110,22 @@ export function TodoRow({ todo, listId, ownerToken, canEdit }: Props) {
   }
 
   return (
-    <li className="group flex items-center gap-3 rounded-md border bg-card p-3">
+    <li
+      ref={setNodeRef}
+      style={sortableStyle}
+      className="group flex items-center gap-3 rounded-md border bg-card p-3"
+    >
+      {canDrag && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Drag to reorder "${todo.title}"`}
+          className="-ml-1 cursor-grab touch-none rounded p-1 text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="size-4" />
+        </button>
+      )}
       <input
         type="checkbox"
         checked={todo.isDone}

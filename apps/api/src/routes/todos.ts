@@ -1,5 +1,10 @@
 import { prisma } from '@collab/db';
-import { CreateTodoInputSchema, TodoItemSchema, UpdateTodoInputSchema } from '@collab/shared';
+import {
+  CreateTodoInputSchema,
+  ReorderTodosInputSchema,
+  TodoItemSchema,
+  UpdateTodoInputSchema,
+} from '@collab/shared';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { HttpError } from '../lib/errors.js';
@@ -110,6 +115,50 @@ export const todosRoutes: FastifyPluginAsyncZod = async (app) => {
       await prisma.todoItem.delete({ where: { id: existing.id } });
       broadcast(list.id, { type: 'todo.deleted', listId: list.id, itemId: existing.id });
       return reply.status(204).send();
+    },
+  );
+
+  app.post(
+    '/lists/:listId/todos/reorder',
+    {
+      schema: {
+        params: ListIdParams,
+        headers: OptionalOwnerHeaders,
+        body: ReorderTodosInputSchema,
+        response: { 200: z.object({ items: z.array(TodoItemSchema) }) },
+      },
+    },
+    async (req) => {
+      const list = await prisma.list.findUnique({ where: { id: req.params.listId } });
+      if (!list) throw new HttpError(404, 'LIST_NOT_FOUND', 'List not found');
+      assertCanMutate(list, req.headers['x-owner-token']);
+
+      const ids = req.body.items.map((i) => i.id);
+      const existing = await prisma.todoItem.findMany({
+        where: { id: { in: ids }, listId: list.id },
+        select: { id: true },
+      });
+      if (existing.length !== ids.length) {
+        throw new HttpError(
+          400,
+          'VALIDATION_ERROR',
+          'One or more todo ids do not belong to this list.',
+        );
+      }
+
+      await prisma.$transaction(
+        req.body.items.map((i) =>
+          prisma.todoItem.update({ where: { id: i.id }, data: { position: i.position } }),
+        ),
+      );
+
+      const fresh = await prisma.todoItem.findMany({
+        where: { listId: list.id },
+        orderBy: { position: 'asc' },
+      });
+      const items = fresh.map(serializeTodoItem);
+      broadcast(list.id, { type: 'todo.reordered', listId: list.id, items });
+      return { items };
     },
   );
 };
