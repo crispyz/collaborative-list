@@ -1,12 +1,28 @@
 'use client';
 
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import type { CreateTodoInput } from '@collab/shared';
+import type { CreateTodoInput, TodoItem } from '@collab/shared';
 import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { getOwnerToken, removeOwnerToken } from '@/lib/owner-tokens';
 import { useListSubscription } from '@/lib/realtime';
@@ -40,11 +56,17 @@ export function ListPage({ id }: Props) {
     setOwnerToken(getOwnerToken(id));
   }, [id]);
 
+  // Set while a local drag is in flight (drag start → mutation settled). Read
+  // synchronously by the WS subscription to defer incoming `todo.reordered`
+  // events so they can't fight with our in-progress visual state.
+  const dragInFlightRef = useRef(false);
+
   useListSubscription(id, {
     onListDeleted: () => {
       removeOwnerToken(id);
       router.replace('/');
     },
+    shouldSkipEvent: (event) => dragInFlightRef.current && event.type === 'todo.reordered',
   });
 
   const listQuery = useQuery({
@@ -69,6 +91,73 @@ export function ListPage({ id }: Props) {
     }
     createTodo.mutate({ title });
     setNewTitle('');
+  }
+
+  // Temporary order kept ONLY while a drag is in flight (drag start → mutation
+  // settled). Drives the SortableContext during that window. Otherwise the list
+  // renders from React Query like every other piece of state in the app.
+  const [dragOrder, setDragOrder] = useState<TodoItem[] | null>(null);
+
+  const reorder = useMutation({
+    mutationFn: (items: { id: string; position: number }[]) =>
+      api.reorderTodos(id, items, ownerToken),
+    onSuccess: (result) => {
+      // Single authoritative cache write — server response is the source of truth
+      // for ordering. After this, normal cache-driven render resumes.
+      queryClient.setQueryData<ListWithTodos>(['list', id], (old) =>
+        old ? { ...old, todos: result.items } : old,
+      );
+      setDragOrder(null);
+      dragInFlightRef.current = false;
+    },
+    onError: (err) => {
+      setDragOrder(null);
+      dragInFlightRef.current = false;
+      toast.error(err instanceof ApiError ? err.message : 'Failed to reorder todos.');
+    },
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragStart(_event: DragStartEvent) {
+    dragInFlightRef.current = true;
+    const todos = listQuery.data?.todos ?? [];
+    setDragOrder(todos);
+  }
+
+  function handleDragCancel() {
+    setDragOrder(null);
+    dragInFlightRef.current = false;
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    const order = dragOrder ?? listQuery.data?.todos;
+    if (!order) {
+      setDragOrder(null);
+      dragInFlightRef.current = false;
+      return;
+    }
+    if (!over || active.id === over.id) {
+      setDragOrder(null);
+      dragInFlightRef.current = false;
+      return;
+    }
+    const oldIndex = order.findIndex((t) => t.id === active.id);
+    const newIndex = order.findIndex((t) => t.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) {
+      setDragOrder(null);
+      dragInFlightRef.current = false;
+      return;
+    }
+    const newOrder = arrayMove(order, oldIndex, newIndex);
+    // Keep the new order visible until the mutation settles. dragInFlightRef stays
+    // true so deferred WS reorder events from other clients are ignored.
+    setDragOrder(newOrder);
+    reorder.mutate(newOrder.map((t, i) => ({ id: t.id, position: i })));
   }
 
   if (listQuery.isPending) {
@@ -101,6 +190,7 @@ export function ListPage({ id }: Props) {
   const data: ListWithTodos = listQuery.data;
   const isOwner = !!ownerToken;
   const canEdit = isOwner || !data.list.isFrozen;
+  const canReorder = canEdit && filter === 'all';
   const visible = data.todos.filter((t) => {
     if (filter === 'all') return true;
     return filter === 'active' ? !t.isDone : t.isDone;
@@ -162,16 +252,68 @@ export function ListPage({ id }: Props) {
         <TotalCost todos={data.todos} visible={visible} filter={filter} />
       </div>
 
-      <ul className="flex flex-col gap-2">
-        {visible.map((t) => (
-          <TodoRow key={t.id} todo={t} listId={id} ownerToken={ownerToken} canEdit={canEdit} />
-        ))}
-        {visible.length === 0 && (
-          <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
-            {filter === 'all' ? 'No todos yet — add one above.' : `No ${filter} todos.`}
-          </li>
-        )}
-      </ul>
+      {canEdit && filter !== 'all' && (
+        <p className="mb-3 text-xs text-muted-foreground">Switch to All to reorder todos.</p>
+      )}
+
+      {canReorder ? (
+        (() => {
+          // While a drag is in flight we render the temporary `dragOrder`; otherwise
+          // the regular cache-derived `visible` array. `canReorder` already requires
+          // `filter === 'all'`, so `visible === data.todos` in this branch.
+          const displayOrder = dragOrder ?? visible;
+          return (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <SortableContext
+                items={displayOrder.map((t) => t.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="flex flex-col gap-2">
+                  {displayOrder.map((t) => (
+                    <TodoRow
+                      key={t.id}
+                      todo={t}
+                      listId={id}
+                      ownerToken={ownerToken}
+                      canEdit={canEdit}
+                      canDrag
+                    />
+                  ))}
+                  {displayOrder.length === 0 && (
+                    <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
+                      No todos yet — add one above.
+                    </li>
+                  )}
+                </ul>
+              </SortableContext>
+            </DndContext>
+          );
+        })()
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {visible.map((t) => (
+            <TodoRow
+              key={t.id}
+              todo={t}
+              listId={id}
+              ownerToken={ownerToken}
+              canEdit={canEdit}
+              canDrag={false}
+            />
+          ))}
+          {visible.length === 0 && (
+            <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
+              {filter === 'all' ? 'No todos yet — add one above.' : `No ${filter} todos.`}
+            </li>
+          )}
+        </ul>
+      )}
     </main>
   );
 }

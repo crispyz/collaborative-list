@@ -131,7 +131,33 @@ async function main() {
   }
   ok('todo.updated reflects isDone=true');
 
-  // 3. todo.deleted
+  // 3. create T2 (to have something to reorder with)
+  const t2 = await httpJson<{ id: string }>('POST', `/lists/${listId}/todos`, { title: 'Bread' });
+  const evCreatedT2 = await queue.next();
+  if (evCreatedT2.type !== 'todo.created' || evCreatedT2.item.id !== t2.id) {
+    bad(`expected todo.created for T2 ${t2.id}, got ${JSON.stringify(evCreatedT2)}`);
+  }
+  ok('second todo.created received');
+
+  // 4. todo.reordered — swap T1 and T2
+  await httpJson('POST', `/lists/${listId}/todos/reorder`, {
+    items: [
+      { id: t2.id, position: 0 },
+      { id: t1.id, position: 1 },
+    ],
+  });
+  const evReordered = await queue.next();
+  if (
+    evReordered.type !== 'todo.reordered' ||
+    evReordered.items.length !== 2 ||
+    evReordered.items[0]?.id !== t2.id ||
+    evReordered.items[1]?.id !== t1.id
+  ) {
+    bad(`expected todo.reordered with [T2, T1], got ${JSON.stringify(evReordered)}`);
+  }
+  ok('todo.reordered carries the full new order');
+
+  // 5. todo.deleted
   await httpJson('DELETE', `/lists/${listId}/todos/${t1.id}`);
   const ev3 = await queue.next();
   if (ev3.type !== 'todo.deleted' || ev3.itemId !== t1.id) {
@@ -139,7 +165,7 @@ async function main() {
   }
   ok('todo.deleted carries the right itemId');
 
-  // 4. list.frozen
+  // 6. list.frozen
   await httpJson('POST', `/lists/${listId}/freeze`, undefined, ownerToken);
   const ev4 = await queue.next();
   if (ev4.type !== 'list.frozen' || ev4.listId !== listId) {

@@ -10,12 +10,20 @@ const WS_URL = `${HTTP_URL.replace(/^http/, 'ws')}/ws`;
 
 interface SubscriptionOptions {
   onListDeleted?: () => void;
+  /**
+   * Optional predicate called for each inbound event. Return `true` to skip
+   * applying the event to the cache. Used by the list page to defer remote
+   * `todo.reordered` events while the local user is mid-drag.
+   */
+  shouldSkipEvent?: (event: RealtimeEvent) => boolean;
 }
 
 export function useListSubscription(listId: string, options: SubscriptionOptions = {}): void {
   const queryClient = useQueryClient();
   const onListDeletedRef = useRef(options.onListDeleted);
   onListDeletedRef.current = options.onListDeleted;
+  const shouldSkipEventRef = useRef(options.shouldSkipEvent);
+  shouldSkipEventRef.current = options.shouldSkipEvent;
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -42,6 +50,7 @@ export function useListSubscription(listId: string, options: SubscriptionOptions
           return;
         }
         if (!event || typeof event !== 'object' || !('type' in event)) return;
+        if (shouldSkipEventRef.current?.(event)) return;
         applyEvent(queryClient, event, listId, onListDeletedRef.current);
       });
 
