@@ -26,9 +26,10 @@ import type { CreateTodoInput, TodoItem } from '@collab/shared';
 import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { getOwnerToken, removeOwnerToken } from '@/lib/owner-tokens';
 import { useListSubscription } from '@/lib/realtime';
+import { buildTree } from '@/lib/tree';
 import { FilterTabs, type FilterValue } from '@/components/filter-tabs';
 import { OwnerControls } from '@/components/owner-controls';
-import { TodoRow } from '@/components/todo-item';
+import { TodoBranch } from '@/components/todo-branch';
 import { TotalCost } from '@/components/total-cost';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -93,10 +94,13 @@ export function ListPage({ id }: Props) {
     setNewTitle('');
   }
 
-  // Temporary order kept ONLY while a drag is in flight (drag start → mutation
-  // settled). Drives the SortableContext during that window. Otherwise the list
-  // renders from React Query like every other piece of state in the app.
-  const [dragOrder, setDragOrder] = useState<TodoItem[] | null>(null);
+  // Temporary scoped order kept ONLY while a drag is in flight (drag start →
+  // mutation settled). `parentId` is the scope: `null` for root reorders, a uuid
+  // for subtask reorders. Otherwise the tree renders from React Query.
+  const [dragOrder, setDragOrder] = useState<{
+    parentId: string | null;
+    items: TodoItem[];
+  } | null>(null);
 
   const reorder = useMutation({
     mutationFn: (items: { id: string; position: number }[]) =>
@@ -122,10 +126,16 @@ export function ListPage({ id }: Props) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  function handleDragStart(_event: DragStartEvent) {
+  function handleDragStart(event: DragStartEvent) {
     dragInFlightRef.current = true;
     const todos = listQuery.data?.todos ?? [];
-    setDragOrder(todos);
+    const dragged = todos.find((t) => t.id === event.active.id);
+    if (!dragged) return;
+    const scopeParentId = dragged.parentId;
+    const siblings = todos
+      .filter((t) => t.parentId === scopeParentId)
+      .sort((a, b) => a.position - b.position);
+    setDragOrder({ parentId: scopeParentId, items: siblings });
   }
 
   function handleDragCancel() {
@@ -135,9 +145,7 @@ export function ListPage({ id }: Props) {
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    const order = dragOrder ?? listQuery.data?.todos;
-    if (!order) {
-      setDragOrder(null);
+    if (!dragOrder) {
       dragInFlightRef.current = false;
       return;
     }
@@ -146,18 +154,18 @@ export function ListPage({ id }: Props) {
       dragInFlightRef.current = false;
       return;
     }
-    const oldIndex = order.findIndex((t) => t.id === active.id);
-    const newIndex = order.findIndex((t) => t.id === over.id);
+    const oldIndex = dragOrder.items.findIndex((t) => t.id === active.id);
+    const newIndex = dragOrder.items.findIndex((t) => t.id === over.id);
     if (oldIndex < 0 || newIndex < 0) {
       setDragOrder(null);
       dragInFlightRef.current = false;
       return;
     }
-    const newOrder = arrayMove(order, oldIndex, newIndex);
+    const newItems = arrayMove(dragOrder.items, oldIndex, newIndex);
     // Keep the new order visible until the mutation settles. dragInFlightRef stays
     // true so deferred WS reorder events from other clients are ignored.
-    setDragOrder(newOrder);
-    reorder.mutate(newOrder.map((t, i) => ({ id: t.id, position: i })));
+    setDragOrder({ parentId: dragOrder.parentId, items: newItems });
+    reorder.mutate(newItems.map((t, i) => ({ id: t.id, position: i })));
   }
 
   if (listQuery.isPending) {
@@ -191,10 +199,21 @@ export function ListPage({ id }: Props) {
   const isOwner = !!ownerToken;
   const canEdit = isOwner || !data.list.isFrozen;
   const canReorder = canEdit && filter === 'all';
-  const visible = data.todos.filter((t) => {
-    if (filter === 'all') return true;
-    return filter === 'active' ? !t.isDone : t.isDone;
-  });
+  // Filter applies to ROOT rows only; matched roots bring all their children
+  // along regardless of the children's state.
+  const matchingRootIds = new Set(
+    data.todos
+      .filter(
+        (t) =>
+          t.parentId === null && (filter === 'all' || (filter === 'active' ? !t.isDone : t.isDone)),
+      )
+      .map((t) => t.id),
+  );
+  const visible = data.todos.filter((t) =>
+    t.parentId === null
+      ? matchingRootIds.has(t.id)
+      : t.parentId !== null && matchingRootIds.has(t.parentId),
+  );
 
   return (
     <main className="mx-auto max-w-3xl p-8">
@@ -256,64 +275,77 @@ export function ListPage({ id }: Props) {
         <p className="mb-3 text-xs text-muted-foreground">Switch to All to reorder todos.</p>
       )}
 
-      {canReorder ? (
-        (() => {
-          // While a drag is in flight we render the temporary `dragOrder`; otherwise
-          // the regular cache-derived `visible` array. `canReorder` already requires
-          // `filter === 'all'`, so `visible === data.todos` in this branch.
-          const displayOrder = dragOrder ?? visible;
-          return (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
-            >
-              <SortableContext
-                items={displayOrder.map((t) => t.id)}
-                strategy={verticalListSortingStrategy}
+      {canReorder
+        ? (() => {
+            // Tree built from the cache; the filter only narrows the root set
+            // (subtasks always show with their parent per spec).
+            const { roots: cacheRoots, childrenByParent } = buildTree(visible);
+            // While a drag is in flight we render the temporary `dragOrder` for the
+            // matching scope (root or one parent's children); everything else
+            // continues to render from the cache.
+            const displayRoots = dragOrder?.parentId === null ? dragOrder.items : cacheRoots;
+            return (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
               >
-                <ul className="flex flex-col gap-2">
-                  {displayOrder.map((t) => (
-                    <TodoRow
-                      key={t.id}
-                      todo={t}
-                      listId={id}
-                      ownerToken={ownerToken}
-                      canEdit={canEdit}
-                      canDrag
-                    />
-                  ))}
-                  {displayOrder.length === 0 && (
-                    <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
-                      No todos yet — add one above.
-                    </li>
-                  )}
-                </ul>
-              </SortableContext>
-            </DndContext>
-          );
-        })()
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {visible.map((t) => (
-            <TodoRow
-              key={t.id}
-              todo={t}
-              listId={id}
-              ownerToken={ownerToken}
-              canEdit={canEdit}
-              canDrag={false}
-            />
-          ))}
-          {visible.length === 0 && (
-            <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
-              {filter === 'all' ? 'No todos yet — add one above.' : `No ${filter} todos.`}
-            </li>
-          )}
-        </ul>
-      )}
+                <SortableContext
+                  items={displayRoots.map((t) => t.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ul className="flex flex-col gap-2">
+                    {displayRoots.map((root) => {
+                      const cacheChildren = childrenByParent.get(root.id) ?? [];
+                      const displayChildren =
+                        dragOrder?.parentId === root.id ? dragOrder.items : cacheChildren;
+                      return (
+                        <TodoBranch
+                          key={root.id}
+                          parent={root}
+                          children={displayChildren}
+                          listId={id}
+                          ownerToken={ownerToken}
+                          canEdit={canEdit}
+                          canDrag
+                        />
+                      );
+                    })}
+                    {displayRoots.length === 0 && (
+                      <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
+                        No todos yet — add one above.
+                      </li>
+                    )}
+                  </ul>
+                </SortableContext>
+              </DndContext>
+            );
+          })()
+        : (() => {
+            const { roots: nonReorderRoots, childrenByParent } = buildTree(visible);
+            return (
+              <ul className="flex flex-col gap-2">
+                {nonReorderRoots.map((root) => (
+                  <TodoBranch
+                    key={root.id}
+                    parent={root}
+                    children={childrenByParent.get(root.id) ?? []}
+                    listId={id}
+                    ownerToken={ownerToken}
+                    canEdit={canEdit}
+                    canDrag={false}
+                  />
+                ))}
+                {nonReorderRoots.length === 0 && (
+                  <li className="rounded-md border bg-card p-4 text-center text-sm text-muted-foreground">
+                    {filter === 'all' ? 'No todos yet — add one above.' : `No ${filter} todos.`}
+                  </li>
+                )}
+              </ul>
+            );
+          })()}
     </main>
   );
 }

@@ -157,15 +157,74 @@ async function main() {
   }
   ok('todo.reordered carries the full new order');
 
-  // 5. todo.deleted
-  await httpJson('DELETE', `/lists/${listId}/todos/${t1.id}`);
-  const ev3 = await queue.next();
-  if (ev3.type !== 'todo.deleted' || ev3.itemId !== t1.id) {
-    bad(`expected todo.deleted ${t1.id}, got ${JSON.stringify(ev3)}`);
+  // 5. Create two subtasks of T1 (parentId set), then reorder them.
+  const sub1 = await httpJson<{ id: string }>('POST', `/lists/${listId}/todos`, {
+    title: 'Lettuce',
+    parentId: t1.id,
+    priceCents: 100,
+  });
+  const evSub1Created = await queue.next();
+  if (
+    evSub1Created.type !== 'todo.created' ||
+    evSub1Created.item.id !== sub1.id ||
+    evSub1Created.item.parentId !== t1.id
+  ) {
+    bad(`expected todo.created subtask of T1, got ${JSON.stringify(evSub1Created)}`);
   }
-  ok('todo.deleted carries the right itemId');
+  ok('todo.created carries parentId for subtask');
 
-  // 6. list.frozen
+  const sub2 = await httpJson<{ id: string }>('POST', `/lists/${listId}/todos`, {
+    title: 'Tomato',
+    parentId: t1.id,
+    priceCents: 200,
+  });
+  const evSub2Created = await queue.next();
+  if (
+    evSub2Created.type !== 'todo.created' ||
+    evSub2Created.item.id !== sub2.id ||
+    evSub2Created.item.parentId !== t1.id
+  ) {
+    bad(`expected second todo.created subtask, got ${JSON.stringify(evSub2Created)}`);
+  }
+  ok('second subtask todo.created received');
+
+  // Reorder the two subtasks (swap order).
+  await httpJson('POST', `/lists/${listId}/todos/reorder`, {
+    items: [
+      { id: sub2.id, position: 0 },
+      { id: sub1.id, position: 1 },
+    ],
+  });
+  const evSubReordered = await queue.next();
+  if (evSubReordered.type !== 'todo.reordered') {
+    bad(`expected todo.reordered for subtasks, got ${JSON.stringify(evSubReordered)}`);
+  }
+  const subOrder = evSubReordered.items.filter((i) => i.parentId === t1.id);
+  if (subOrder.length !== 2 || subOrder[0]?.id !== sub2.id || subOrder[1]?.id !== sub1.id) {
+    bad(`subtasks not in expected order, got ${JSON.stringify(subOrder)}`);
+  }
+  ok('todo.reordered with subtasks scoped to parent');
+
+  // 6. todo.deleted — deleting the parent cascades the two subtasks, so we
+  //    receive three `todo.deleted` events (one per cascaded child + the parent).
+  await httpJson('DELETE', `/lists/${listId}/todos/${t1.id}`);
+  const deletedIds = new Set<string>();
+  for (let i = 0; i < 3; i++) {
+    const ev = await queue.next();
+    if (ev.type !== 'todo.deleted') {
+      bad(`expected todo.deleted, got ${JSON.stringify(ev)}`);
+    }
+    deletedIds.add(ev.itemId);
+  }
+  const expectedDeleted = [t1.id, sub1.id, sub2.id];
+  for (const id of expectedDeleted) {
+    if (!deletedIds.has(id)) {
+      bad(`missing todo.deleted for ${id} in cascade`);
+    }
+  }
+  ok('todo.deleted cascades to parent + both subtasks');
+
+  // 7. list.frozen
   await httpJson('POST', `/lists/${listId}/freeze`, undefined, ownerToken);
   const ev4 = await queue.next();
   if (ev4.type !== 'list.frozen' || ev4.listId !== listId) {

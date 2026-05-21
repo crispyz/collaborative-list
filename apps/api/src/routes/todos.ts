@@ -112,7 +112,18 @@ export const todosRoutes: FastifyPluginAsyncZod = async (app) => {
         throw new HttpError(404, 'TODO_NOT_FOUND', 'Todo not found');
       }
 
+      // Capture child ids before the cascade delete so we can broadcast each
+      // subtask's removal too. Without this, other tabs would keep orphaned
+      // subtasks in their cache until the next refresh.
+      const cascadedChildren = await prisma.todoItem.findMany({
+        where: { parentId: existing.id },
+        select: { id: true },
+      });
+
       await prisma.todoItem.delete({ where: { id: existing.id } });
+      for (const child of cascadedChildren) {
+        broadcast(list.id, { type: 'todo.deleted', listId: list.id, itemId: child.id });
+      }
       broadcast(list.id, { type: 'todo.deleted', listId: list.id, itemId: existing.id });
       return reply.status(204).send();
     },
@@ -136,7 +147,7 @@ export const todosRoutes: FastifyPluginAsyncZod = async (app) => {
       const ids = req.body.items.map((i) => i.id);
       const existing = await prisma.todoItem.findMany({
         where: { id: { in: ids }, listId: list.id },
-        select: { id: true },
+        select: { id: true, parentId: true },
       });
       if (existing.length !== ids.length) {
         throw new HttpError(
@@ -144,6 +155,10 @@ export const todosRoutes: FastifyPluginAsyncZod = async (app) => {
           'VALIDATION_ERROR',
           'One or more todo ids do not belong to this list.',
         );
+      }
+      const parentIds = new Set(existing.map((e) => e.parentId));
+      if (parentIds.size > 1) {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'Reorder items must share the same parent.');
       }
 
       await prisma.$transaction(
