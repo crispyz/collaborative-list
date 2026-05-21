@@ -1,11 +1,13 @@
 # Collaborative List
 
-A real-time collaborative to-do list. Multiple users open the same list URL in different browsers and see edits propagate instantly. Built as a deliberately focused technical submission demonstrating full-stack product development, not a partial implementation of every possible feature.
+A real-time collaborative to-do list. Multiple users open the same list URL in different browsers and see edits propagate instantly.
+
+**Live demo:** https://collab-list-web.onrender.com (free-tier cold start ~30–50s after idle)
 
 ## Stack
 
 - **Backend:** Node.js + TypeScript + Fastify + Prisma + PostgreSQL + WebSockets (`@fastify/websocket`)
-- **Frontend:** Next.js (App Router) + React 19 + TypeScript + TanStack Query + Tailwind v4 + shadcn/ui
+- **Frontend:** Next.js (App Router) + React 19 + TypeScript + TanStack Query + Tailwind v4 + shadcn/ui + `dnd-kit`
 - **Shared:** Zod schemas → inferred TypeScript types (single source of truth for request shapes and `RealtimeEvent`)
 - **Monorepo:** npm workspaces
 
@@ -74,35 +76,16 @@ npm run dev
 
 ### Quality
 
-| Command                | Does                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------- |
-| `npm run typecheck`    | `tsc --noEmit` across every workspace, strict mode                           |
-| `npm run format`       | Prettier writes formatted output across the repo                             |
-| `npm run format:check` | Prettier in check mode (non-zero on drift; CI-friendly)                      |
-| `npm run test:api`     | HTTP smoke test: 41 happy- and error-path assertions against every API route |
-| `npm run test:ws`      | WebSocket smoke test: 9 assertions, one per `RealtimeEvent` type             |
-| `npm run test`         | Runs both smoke tests sequentially                                           |
-
-## Deploy to Render
-
-This repo ships with [`render.yaml`](./render.yaml) so the whole stack can be deployed via Render's Blueprint feature.
-
-1. Push the repo to GitHub (private is fine).
-2. Render dashboard → **New** → **Blueprint** → connect this repo → Render reads `render.yaml`.
-3. Click **Apply**. Render provisions one Postgres database + two web services (`collab-list-api` and `collab-list-web`).
-4. First build takes ~5 minutes — Prisma generates the client and applies the initial migration as part of the API service's build step.
-5. Visit `https://collab-list-web.onrender.com`. First request after idle takes ~30–50s (Render's free tier sleeps after 15 minutes — known caveat).
-
-Caveats on the free tier:
-
-- Web services sleep after 15 min inactivity → cold start on the next request.
-- Free Postgres is deleted after 90 days; upgrade or recreate before then.
-
-If you fork into a different Render account, update `NEXT_PUBLIC_API_URL` in `render.yaml` to match the API service's hostname (Render uses `<service-name>.onrender.com`).
+| Command                | Does                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `npm run typecheck`    | `tsc --noEmit` across every workspace, strict mode                                |
+| `npm run format`       | Prettier writes formatted output across the repo                                  |
+| `npm run format:check` | Prettier in check mode (non-zero on drift; CI-friendly)                           |
+| `npm run test:api`     | HTTP smoke test: 44 happy- and error-path assertions against every API route      |
+| `npm run test:ws`      | WebSocket smoke test: 14 assertions covering every `RealtimeEvent` type + subtask |
+| `npm run test`         | Runs both smoke tests sequentially                                                |
 
 ## Implemented stories
-
-**Primary scope:**
 
 1. Create to-do items
 2. Multiple lists with unique shareable URLs
@@ -112,26 +95,29 @@ If you fork into a different Render account, update `NEXT_PUBLIC_API_URL` in `re
 6. Filter active / done / all (URL search param)
 7. Freeze / unfreeze list by owner (server-side enforced; owner bypasses, non-owners blocked + UI disabled)
 8. Price/cost per task (stored as integer cents)
-9. Aggregate total cost per list (recomputes live; separates `Visible` vs `All` when filtered)
+9. Aggregate total cost per list — recomputes live; separates `Visible` vs `All` when filtered; includes subtask prices
+10. Drag-and-drop reordering — `dnd-kit`-driven, per-scope (root rows + subtasks reorder within their own parent), position persisted to PostgreSQL as `Float`, reorders broadcast to other clients
+11. One-level subtasks — `parentId` self-reference with cascade-delete; each subtask has its own title/price/done/position; reorders are scoped to siblings (server rejects cross-parent reorders); add-subtask flow with hover-`+` affordance and counter pill
 
-**Not implemented (deferred):**
+## Sharing & ownership model
 
-- Drag & drop ordering — `position: Float` field exists in the schema, ready for `dnd-kit` integration
-- Subtasks — `parentId` self-reference + cascade delete already in place; UI not wired yet
-- Subtask price aggregation in parent
+No signup or login. Anyone with a list's URL can view and edit it; the creator's browser holds a per-list `ownerToken` (in `localStorage`) that the server checks for owner-only actions (freeze/unfreeze, delete-list, edit-while-frozen). Same model as Excalidraw rooms or a Figma "Anyone with the link" share — chosen so the submission stays focused on the collaborative-list mechanics rather than building yet another auth flow.
 
 ## Intentionally out of scope
 
-Cut deliberately to keep the submission focused and production-oriented within the available time:
+Cut to keep the submission focused and production-oriented within the available time:
 
-- Infinite nested subtasks
+- Infinite nested subtasks (capped at one level by design)
 - Markdown rich-text descriptions
 - Real-time cursor / text selection collaboration
 - Special typed items (`work-task`, `food`)
 - Offline editing with reconnect sync
 - VR / 3D multi-list browsing
 - Drag-converting subtasks to root tasks
-- User accounts / authentication — sharing model is anonymous URL + per-list `ownerToken`, similar to Figma share links or Excalidraw rooms
+
+## Deployment
+
+The repo ships with [`render.yaml`](./render.yaml) — a Render Blueprint that provisions a Postgres instance plus the API and Web services. The live demo above is deployed from `main` on every push.
 
 ## Project documents
 
