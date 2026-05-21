@@ -27,6 +27,7 @@ import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { getOwnerToken, removeOwnerToken } from '@/lib/owner-tokens';
 import { useListSubscription } from '@/lib/realtime';
 import { buildTree } from '@/lib/tree';
+import { recordVisit } from '@/lib/visited-lists';
 import { FilterTabs, type FilterValue } from '@/components/filter-tabs';
 import { OwnerControls } from '@/components/owner-controls';
 import { TodoBranch } from '@/components/todo-branch';
@@ -74,6 +75,17 @@ export function ListPage({ id }: Props) {
     queryKey: ['list', id],
     queryFn: () => api.getList(id),
   });
+
+  // Record this visit under "Shared with me" if the browser doesn't own the
+  // list. Reads localStorage directly to avoid racing the ownerToken state
+  // setter on first paint. Re-fires when the list name changes (owner renames
+  // propagate to visitors via WS) so the home page's label stays fresh.
+  const listName = listQuery.data?.list.name;
+  useEffect(() => {
+    if (!listName) return;
+    if (getOwnerToken(id)) return;
+    recordVisit(id, listName);
+  }, [id, listName]);
 
   const [newTitle, setNewTitle] = useState('');
   const createTodo = useMutation({
@@ -222,7 +234,7 @@ export function ListPage({ id }: Props) {
         className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
-        My lists
+        Home
       </Link>
       <header className="mb-6">
         <div className="flex items-center justify-between gap-3">
@@ -266,7 +278,7 @@ export function ListPage({ id }: Props) {
         </Button>
       </form>
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex h-10 items-center justify-between">
         <FilterTabs current={filter} />
         <TotalCost todos={data.todos} visible={visible} filter={filter} />
       </div>

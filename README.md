@@ -103,6 +103,8 @@ npm run dev
 
 No signup or login. Anyone with a list's URL can view and edit it; the creator's browser holds a per-list `ownerToken` (in `localStorage`) that the server checks for owner-only actions (freeze/unfreeze, delete-list, edit-while-frozen). Same model as Excalidraw rooms or a Figma "Anyone with the link" share — chosen so the submission stays focused on the collaborative-list mechanics rather than building yet another auth flow.
 
+The homepage groups lists into **Your lists** (owned by this browser) and **Shared with me** (visited via a share link), so visitors of a share link have a way back to the lists they've collaborated on without bookmarking the URL.
+
 ## Intentionally out of scope
 
 Cut to keep the submission focused and production-oriented within the available time:
