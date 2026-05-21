@@ -1,8 +1,8 @@
 'use client';
 
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, type ListWithTodos } from '@/lib/api';
 import { getOwnedListIds, removeOwnerToken } from '@/lib/owner-tokens';
 import { getVisitedLists, removeVisited, type VisitedList } from '@/lib/visited-lists';
 import { CreateListForm } from '@/components/create-list-form';
@@ -85,10 +85,7 @@ export function HomePage() {
     );
   }
 
-  const hasOwned = ownedIds.length > 0;
-  const hasVisited = visited.length > 0;
-
-  if (!hasOwned && !hasVisited) {
+  if (ownedIds.length === 0 && visited.length === 0) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center p-8">
         <h1 className="mb-2 text-2xl font-semibold">Collaborative List</h1>
@@ -115,43 +112,38 @@ export function HomePage() {
         </div>
       )}
 
-      {hasOwned && (
-        <section className="mb-10">
-          <h2 className="mb-4 text-sm font-medium text-muted-foreground">Your lists</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {ownedIds.map((id, i) => {
-              const q = ownedQueries[i];
-              if (!q) return null;
-              if (q.data) {
-                return <ListCard key={id} list={q.data.list} todoCount={q.data.todos.length} />;
-              }
-              if (q.isPending) {
-                return <Skeleton key={id} className="h-32 w-full" />;
-              }
-              return null;
-            })}
-          </div>
-        </section>
-      )}
-
-      {hasVisited && (
-        <section className="mb-10">
-          <h2 className="mb-4 text-sm font-medium text-muted-foreground">Shared with me</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {visited.map((v, i) => {
-              const q = visitedQueries[i];
-              if (!q) return null;
-              if (q.data) {
-                return <ListCard key={v.id} list={q.data.list} todoCount={q.data.todos.length} />;
-              }
-              if (q.isPending) {
-                return <Skeleton key={v.id} className="h-32 w-full" />;
-              }
-              return null;
-            })}
-          </div>
-        </section>
-      )}
+      <ListSection title="Your lists" ids={ownedIds} queries={ownedQueries} />
+      <ListSection title="Shared with me" ids={visited.map((v) => v.id)} queries={visitedQueries} />
     </main>
+  );
+}
+
+function ListSection({
+  title,
+  ids,
+  queries,
+}: {
+  title: string;
+  ids: string[];
+  queries: UseQueryResult<ListWithTodos>[];
+}) {
+  if (ids.length === 0) return null;
+  return (
+    <section className="mb-10">
+      <h2 className="mb-4 text-sm font-medium text-muted-foreground">{title}</h2>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {ids.map((id, i) => {
+          const q = queries[i];
+          if (!q) return null;
+          if (q.data) {
+            return <ListCard key={id} list={q.data.list} todoCount={q.data.todos.length} />;
+          }
+          if (q.isPending) {
+            return <Skeleton key={id} className="h-32 w-full" />;
+          }
+          return null;
+        })}
+      </div>
+    </section>
   );
 }
